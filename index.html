@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tumi Always</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #02020a; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* Glassmorphic Intro Dashboard UI */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10; pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        #dashboard {
+            background: rgba(23, 3, 8, 0.45);
+            border: 1.5px solid #bf7ff3;
+            border-radius: 16px;
+            padding: 40px 60px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            pointer-events: auto;
+        }
+        .title-container { position: relative; margin-bottom: 20px; }
+        .title-bg { font-family: Georgia, serif; font-size: 100px; font-weight: bold; color: rgba(255, 46, 97, 0.3); user-select: none; }
+        .title-fg { font-family: Georgia, serif; font-size: 92px; font-weight: bold; color: #fdfaf5; position: absolute; top: 4px; left: 0; width: 100%; user-select: none; animation: pulse 2s infinite ease-in-out; }
+        .hearts { color: #ff2e61; font-size: 32px; margin: 0 15px; display: inline-block; animation: heartBeat 1.5s infinite ease-in-out; }
+        .subtitle { color: #bf7ff3; font-size: 18px; font-weight: bold; letter-spacing: 6px; margin-bottom: 40px; margin-top: 10px; user-select: none; }
+        
+        #begin-btn {
+            background: rgba(89, 20, 46, 0.75);
+            color: #fdfaf5;
+            border: 3px solid #ff73a6;
+            padding: 14px 36px;
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255, 115, 166, 0.4);
+        }
+        #begin-btn:hover { background: #ff2e61; box-shadow: 0 0 25px #ff73a6; transform: scale(1.05); }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+        @keyframes heartBeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div id="dashboard">
+            <div class="title-container">
+                <span class="hearts">♥</span>
+                <span class="title-bg">Tumi</span>
+                <span class="title-fg">Tumi</span>
+                <span class="hearts">♥</span>
+            </div>
+            <div class="subtitle">FOR MEHERUNNESA</div>
+            <button id="begin-btn">BEGIN SHOW</button>
+        </div>
+    </div>
+
+    <canvas id="mainCanvas"></canvas>
+    
+    <audio id="bgMusic" src="tumi.mp3" loop></audio>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const beginBtn = document.getElementById('begin-btn');
+        const bgMusic = document.getElementById('bgMusic');
+
+        let width, height;
+        let showStarted = false;
+        let frameCounter = 0;
+
+        // Config Arrays
+        const SWEET_MSGS = ['Baby','I love u','Miss krtesi','raag krso?','vaat khaiso','ghumaio na','Cutie pie'];
+        const MCLR = ['#ff2e61', '#ff73a6', '#bf7ff3', '#ffaa80', '#ffd259', '#fdfaf5'];
+
+        // Image Engine Assets - Using placeholders that fall back elegantly
+        // Replace these array strings with your actual filenames like 'photo1.jpg' once uploaded!
+        const PHOTO_FILES = ['photo1.jpg','photo2.jpg','photo3.jpg','photo4.jpg','photo5.jpg','photo6.jpg'];
+        let loadedImages = [];
+        let activePhotos = [];
+        let photoShuffleOrder = [];
+        let shuffleIdx = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- BACKGROUND OBJECT MATRICES ---
+        let layer1 = [], layer2 = [], layer3 = [], rain = [], messages = [], hearts = [], flowers = [], particles = [];
+
+        // Setup Parallax Elements
+        for(let i=0; i<120; i++) layer1.push({ x: Math.random(), y: Math.random(), speed: 0.0002 + Math.random()*0.0003, size: 1 + Math.random()*1.5 });
+        for(let i=0; i<60; i++) layer2.push({ x: Math.random(), y: Math.random(), speed: 0.0006 + Math.random()*0.0008, size: 3 + Math.random()*2, alpha: 0.3 + Math.random()*0.5, phase: Math.random()*Math.PI });
+        for(let i=0; i<15; i++) layer3.push({ x: Math.random(), y: Math.random(), speed: 0.0015 + Math.random()*0.002, size: 15 + Math.random()*20, alpha: 0.03 + Math.random()*0.05, color: MCLR[Math.floor(Math.random()*MCLR.length)] });
+        for(let i=0; i<100; i++) rain.push({ x: Math.random(), y: Math.random(), speed: 0.012 + Math.random()*0.015, len: 0.014 + Math.random()*0.012, alpha: 0.06 + Math.random()*0.12 });
+
+        // Pre-load images gracefully
+        let loadedCount = 0;
+        PHOTO_FILES.forEach((src) => {
+            let img = new Image();
+            img.src = src;
+            img.onload = () => { loadedImages.push(img); if(loadedImages.length === PHOTO_FILES.length) initShuffle(); };
+            img.onerror = () => {
+                // Generate colorful vector fallback plates if image fails to load locally
+                let canvasPlate = document.createElement('canvas');
+                canvasPlate.width = 400; canvasPlate.height = 500;
+                let pCtx = canvasPlate.getContext('2d');
+                pCtx.fillStyle = '#e6789b'; pCtx.fillRect(0,0,400,500);
+                pCtx.fillStyle = '#ffffff'; pCtx.font = 'bold 24px Arial'; pCtx.textAlign = 'center';
+                pCtx.fillText('♥ Photo ♥', 200, 250);
+                let fallbackImg = new Image(); fallbackImg.src = canvasPlate.toDataURL();
+                loadedImages.push(fallbackImg);
+                if(loadedImages.length === PHOTO_FILES.length) initShuffle();
+            };
+        });
+
+        function initShuffle() {
+            photoShuffleOrder = Array.from({length: loadedImages.length}, (_, i) => i).sort(() => Math.random() - 0.5);
+        }
+
+        // --- USER INTERACTION TRIGGER ---
+        beginBtn.addEventListener('click', () => {
+            showStarted = true;
+            uiLayer.style.opacity = 0;
+            setTimeout(() => uiLayer.style.display = 'none', 500);
+            try { bgMusic.play(); } catch(e) { console.log("Audio blocked by browser context."); }
+        });
+
+        // --- DRAW STRUCT HELPER FUNCTIONS ---
+        function drawHeartShape(cx, cy, sc, alpha, color) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.translate(cx, cy);
+            ctx.scale(sc * 0.7, sc * 0.7);
+            for (let t = 0; t <= Math.PI * 2; t += 0.05) {
+                let x = 16 * Math.pow(Math.sin(t), 3);
+                let y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+                if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawFlowerShape(x, y, scale, rot, alpha, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rot);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = color;
+            for(let p = 0; p < 6; p++) {
+                ctx.rotate(Math.PI / 3);
+                ctx.beginPath();
+                ctx.ellipse(0, scale * 1.8, scale * 1.1, scale * 2.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.beginPath();
+            ctx.arc(0, 0, scale * 0.8, 0, Math.PI * 2);
+            ctx.fillStyle = '#fffaee';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- MAIN ENGINE SIMULATION LOOP ---
+        function loop() {
+            frameCounter++;
+            ctx.fillStyle = '#010104';
+            ctx.fillRect(0, 0, width, height);
+
+            // 1. Tick & Render Parallax Layers
+            layer1.forEach(p => {
+                p.y -= p.speed; if(p.y < 0) p.y = 1;
+                ctx.fillStyle = 'rgba(253, 250, 245, 0.45)';
+                ctx.fillRect(p.x * width, p.y * height, p.size, p.size);
+            });
+
+            layer2.forEach(p => {
+                p.y -= p.speed; if(p.y < 0) p.y = 1;
+                let shimmer = p.alpha * (0.5 + 0.5 * Math.sin(frameCounter * 0.08 + p.phase));
+                ctx.fillStyle = `rgba(255, 115, 166, ${shimmer})`;
+                ctx.beginPath(); ctx.arc(p.x * width, p.y * height, p.size/2, 0, Math.PI*2); ctx.fill();
+            });
+
+            layer3.forEach(p => {
+                p.y += p.speed; p.x += 0.0006 * Math.sin(frameCounter * 0.04);
+                if(p.y > 1.05) { p.y = -0.05; p.x = Math.random(); }
+                ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x * width, p.y * height, p.size, 0, Math.PI*2); ctx.fill(); ctx.restore();
+            });
+
+            rain.forEach(r => {
+                r.y -= r.speed; if(r.y < -0.05) { r.y = 1.05; r.x = Math.random(); }
+                ctx.strokeStyle = `rgba(178, 216, 255, ${r.alpha})`;
+                ctx.lineWidth = 0.8;
+                ctx.beginPath(); ctx.moveTo(r.x * width, r.y * height); ctx.lineTo(r.x * width, (r.y - r.len) * height); ctx.stroke();
+            });
+
+            // If runtime staging loop isn't unlocked yet, spin purely standby environmental animations
+            if (!showStarted) {
+                requestAnimationFrame(loop);
+                return;
+            }
+
+            // 2. Main Sequential Slideshow Core
+            if(frameCounter % 100 === 0 && loadedImages.length > 0) {
+                if(photoShuffleOrder.length === 0) initShuffle();
+                let pIdx = photoShuffleOrder[shuffleIdx];
+                shuffleIdx = (shuffleIdx + 1) % loadedImages.length;
+
+                let img = loadedImages[pIdx];
+                let scaleBase = (width * 0.22) / img.width;
+                
+                activePhotos.push({
+                    img: img,
+                    x: (0.15 + Math.random() * 0.5) * width,
+                    y: (0.18 + Math.random() * 0.4) * height,
+                    w: img.width * scaleBase,
+                    h: img.height * scaleBase,
+                    angle: (Math.random() - 0.5) * 0.4,
+                    age: 0,
+                    fadeIn: 35, hold: 65, fadeOut: 35,
+                    totalLife: 135
+                });
+            }
+
+            // Handle Active Photo Rendering Pipes
+            activePhotos.forEach((p, idx) => {
+                p.age++;
+                let alpha = 0, scale = 1;
+                if(p.age <= p.fadeIn) {
+                    alpha = p.age / p.fadeIn;
+                    scale = 0.6 + 0.4 * Math.sin((alpha * Math.PI)/2);
+                } else if(p.age <= p.fadeIn + p.hold) {
+                    alpha = 1;
+                    scale = 1.0 + 0.015 * Math.sin((p.age - p.fadeIn) * 0.08);
+                } else {
+                    let outFrame = p.age - p.fadeIn - p.hold;
+                    alpha = 1 - (outFrame / p.fadeOut);
+                    scale = 1.0 - 0.15 * (outFrame / p.fadeOut);
+                }
+
+                // Mid-life structural explosion particle generation trigger
+                if(p.age === p.fadeIn + 5) {
+                    for(let k=0; k<12; k++) {
+                        particles.push({
+                            x: p.x, y: p.y,
+                            vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.6) * 5 - 2,
+                            size: 0.4 + Math.random()*0.5, alpha: 1,
+                            color: MCLR[Math.floor(Math.random()*MCLR.length)]
+                        });
+                    }
+                }
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.angle);
+                ctx.scale(scale, scale);
+                ctx.globalAlpha = alpha;
+
+                // Translucent Neon Frame Border
+                ctx.lineWidth = 8; ctx.strokeStyle = '#ff73a6';
+                ctx.strokeRect(-p.w/2 - 4, -p.h/2 - 4, p.w + 8, p.h + 8);
+                ctx.lineWidth = 2; ctx.strokeStyle = '#ff2e61';
+                ctx.strokeRect(-p.w/2 - 1, -p.h/2 - 1, p.w + 2, p.h + 2);
+
+                // Render Image Core
+                ctx.drawImage(p.img, -p.w/2, -p.h/2, p.w, p.h);
+                ctx.restore();
+            });
+            activePhotos = activePhotos.filter(p => p.age < p.totalLife);
+
+            // 3. Typography Particle Generation Engine
+            if(frameCounter % 28 === 0) {
+                messages.push({
+                    text: SWEET_MSGS[Math.floor(Math.random()*SWEET_MSGS.length)],
+                    x: (0.15 + Math.random()*0.7) * width,
+                    y: (0.2 + Math.random()*0.6) * height,
+                    alpha: 1, scale: 0.4,
+                    color: MCLR[Math.floor(Math.random()*MCLR.length)],
+                    phase: Math.random() * 10
+                });
+            }
+
+            messages.forEach(m => {
+                m.y -= 0.7; m.x += 0.4 * Math.sin(frameCounter*0.05 + m.phase);
+                if(m.scale < 1) m.scale += 0.08;
+                m.alpha -= 0.010;
+                ctx.save(); ctx.globalAlpha = Math.max(0, m.alpha); ctx.fillStyle = m.color;
+                ctx.font = `italic bold ${Math.round(24 * m.scale)}px Georgia`;
+                ctx.textAlign = 'center'; ctx.fillText(m.text, m.x, m.y); ctx.restore();
+            });
+            messages = messages.filter(m => m.alpha > 0);
+
+            // 4. Kinetic Vector Particle Emitters (Hearts, Flowers, Bursts)
+            if(frameCounter % 14 === 0) hearts.push({ x: Math.random()*width, y: height + 20, speed: 1.2 + Math.random()*1.5, size: 0.4 + Math.random()*0.7, alpha: 0.4 + Math.random()*0.4 });
+            if(frameCounter % 32 === 0) flowers.push({ x: Math.random()*width, y: height + 30, speed: 0.9 + Math.random()*1.2, size: 6 + Math.random()*8, rot: Math.random()*360, rotSpeed: (Math.random()-0.5)*0.04, alpha: 0.6 + Math.random()*0.4, color: MCLR[Math.floor(Math.random()*MCLR.length)] });
+
+            hearts.forEach(h => { h.y -= h.speed; h.alpha -= 0.003; drawHeartShape(h.x, h.y, h.size, Math.max(0, h.alpha), '#ff2e61'); });
+            hearts = hearts.filter(h => h.alpha > 0 && h.y > -20);
+
+            flowers.forEach(f => { f.y -= f.speed; f.rot += f.rotSpeed; f.alpha -= 0.003; drawFlowerShape(f.x, f.y, f.size, f.rot, Math.max(0, f.alpha), f.color); });
+            flowers = flowers.filter(f => f.alpha > 0 && f.y > -30);
+
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.alpha -= 0.025;
+                drawHeartShape(p.x, p.y, p.size, Math.max(0, p.alpha), p.color);
+            });
+            particles = particles.filter(p => p.alpha > 0);
+
+            requestAnimationFrame(loop);
+        }
+        loop();
+    </script>
+</body>
+</html>
